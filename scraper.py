@@ -23,6 +23,35 @@ class PolicyAdvisorScraper:
             print(f"Error fetching {url}: {str(e)}")
             return None
 
+    def extract_structured_data(self, soup):
+        """Extract structured data from script tags"""
+        structured_data = {}
+        for script in soup.find_all('script', type='application/ld+json'):
+            try:
+                data = json.loads(script.string)
+                structured_data.update(data)
+            except:
+                continue
+        return structured_data
+
+    def extract_faq_content(self, soup):
+        """Extract FAQ sections and questions"""
+        faqs = []
+        # Look for common FAQ patterns
+        faq_sections = soup.find_all(['div', 'section'], class_=lambda x: x and 'faq' in x.lower())
+        
+        for section in faq_sections:
+            questions = section.find_all(['dt', 'h3', 'h4'])
+            answers = section.find_all(['dd', 'p'])
+            
+            for q, a in zip(questions, answers):
+                faqs.append({
+                    'question': q.get_text(strip=True),
+                    'answer': a.get_text(strip=True)
+                })
+        
+        return faqs
+
     def extract_page_content(self, url):
         soup = self.get_soup(url)
         if not soup:
@@ -32,7 +61,14 @@ class PolicyAdvisorScraper:
             'url': url,
             'title': '',
             'content': '',
-            'metadata': {}
+            'metadata': {},
+            'structured_data': {},
+            'faqs': [],
+            'categories': [],
+            'summary': '',
+            'last_updated': '',
+            'author': '',
+            'related_topics': []
         }
 
         # Extract title
@@ -40,28 +76,75 @@ class PolicyAdvisorScraper:
         if title_tag:
             content['title'] = title_tag.get_text().strip()
 
-        # Extract main content
+        # Extract main content with better structure
         main_content = soup.find('main') or soup.find('article')
         if main_content:
             # Remove unwanted elements
             for unwanted in main_content.find_all(['script', 'style', 'nav', 'header', 'footer']):
                 unwanted.decompose()
             
-            # Extract paragraphs and headers for better content structure
-            paragraphs = main_content.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            content_text = []
-            for p in paragraphs:
-                text = p.get_text(strip=True)
-                if text:  # Only add non-empty text
-                    content_text.append(text)
-            content['content'] = ' '.join(content_text)
+            # Extract content with structure preservation
+            content_structure = []
+            for element in main_content.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol']):
+                if element.name.startswith('h'):
+                    content_structure.append({
+                        'type': 'heading',
+                        'level': int(element.name[1]),
+                        'text': element.get_text(strip=True)
+                    })
+                elif element.name == 'p':
+                    text = element.get_text(strip=True)
+                    if text:
+                        content_structure.append({
+                            'type': 'paragraph',
+                            'text': text
+                        })
+                elif element.name in ['ul', 'ol']:
+                    items = [li.get_text(strip=True) for li in element.find_all('li')]
+                    if items:
+                        content_structure.append({
+                            'type': 'list',
+                            'items': items
+                        })
+            
+            # Store structured content
+            content['content_structure'] = content_structure
+            # Also keep plain text version for backward compatibility
+            content['content'] = ' '.join(item['text'] if 'text' in item else ' '.join(item['items'])
+                                        for item in content_structure)
 
-        # Extract metadata
+        # Extract enhanced metadata
         meta_tags = soup.find_all('meta')
         for tag in meta_tags:
             name = tag.get('name', tag.get('property', ''))
             if name and tag.get('content'):
                 content['metadata'][name] = tag.get('content')
+
+        # Extract structured data
+        content['structured_data'] = self.extract_structured_data(soup)
+
+        # Extract FAQs
+        content['faqs'] = self.extract_faq_content(soup)
+
+        # Extract categories/tags
+        category_elements = soup.find_all(['a', 'span'], class_=lambda x: x and any(word in x.lower()
+                                        for word in ['category', 'tag', 'topic']))
+        content['categories'] = [el.get_text(strip=True) for el in category_elements]
+
+        # Extract author information
+        author_element = soup.find(['a', 'span', 'p'], class_=lambda x: x and 'author' in x.lower())
+        if author_element:
+            content['author'] = author_element.get_text(strip=True)
+
+        # Extract last updated date
+        date_element = soup.find(['time', 'span', 'p'], class_=lambda x: x and any(word in x.lower()
+                                for word in ['date', 'published', 'updated']))
+        if date_element:
+            content['last_updated'] = date_element.get_text(strip=True)
+
+        # Extract related topics
+        related_elements = soup.find_all(['a'], class_=lambda x: x and 'related' in x.lower())
+        content['related_topics'] = [el.get_text(strip=True) for el in related_elements]
 
         return content
 

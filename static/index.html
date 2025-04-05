@@ -9,8 +9,10 @@
 <body>
     <div class="chat-container">
         <div class="chat-header">
-            <h1>PolicyAdvisor Assistant</h1>
-            <p>Ask me anything about insurance!</p>
+            <div class="header-main">
+                <h1>PolicyAdvisor Assistant</h1>
+                <p>Ask me anything about insurance!</p>
+            </div>
         </div>
         <div class="chat-messages" id="chat-messages">
             <div class="message bot">
@@ -20,8 +22,18 @@
             </div>
         </div>
         <div class="chat-input">
-            <input type="text" id="user-input" placeholder="Type your message here...">
-            <button id="send-button">Send</button>
+            <div class="file-upload">
+                <input type="file" id="file-input" accept=".txt,.pdf,.doc,.docx">
+                <label for="file-input" class="file-label">📎 Upload Document</label>
+                <span id="file-name"></span>
+            </div>
+            <div class="message-input">
+                <div class="input-wrapper">
+                    <div class="markdown-preview"></div>
+                    <input type="text" id="user-input" placeholder="Type your message here...">
+                </div>
+                <button id="send-button">Send</button>
+            </div>
         </div>
     </div>
     <script src="script.js"></script>
